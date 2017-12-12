@@ -299,6 +299,8 @@ private:
 
   unsigned int stepCount = 0;
 
+  bool block = false;
+
   static void onWindowResized(GLFWwindow *window, int width, int height) {
     if (width == 0 || height == 0)
       return;
@@ -409,23 +411,38 @@ private:
   }
 
   void handleKeyPress(int key) {
+    if (block) {
+      return;
+    }
     if (lastKeyPressed == -1) {
       if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
-        storeTetramino();
-        initTetramino();
-        setTetramino();
-        setSquareWidthHeigth();
-        recreateObject();
-        moveVertex();
+        summon();
       } else if (key == GLFW_KEY_SPACE) {
         rotateTetramino();
         setSquareWidthHeigth();
         moveVertex();
+      } else if (key == GLFW_KEY_LEFT_CONTROL ||
+                 key == GLFW_KEY_RIGHT_CONTROL) {
+        summonNextPentamino();
       } else {
         lastKeyPressed = key;
         moveVertex();
       }
     }
+  }
+
+  void summonNextPentamino() {
+    lastKeyPressed = GLFW_KEY_S;
+    block = true;
+  }
+
+  void summon() {
+    storeTetramino();
+    initTetramino();
+    setTetramino();
+    setSquareWidthHeigth();
+    recreateObject();
+    moveVertex();
   }
 
   void storeTetramino() { blob.push_back(*currentTetramino); }
@@ -1451,6 +1468,55 @@ private:
           }
         }
       }
+    } else {
+      if (storedEdge.first.y == storedEdge.second.y) {
+        if (std::abs(storedEdge.second.y - currentEdge.first.y) <= onePixelY ||
+            std::abs(storedEdge.second.y - currentEdge.second.y) <= onePixelY) {
+          float minStored = std::min(storedEdge.first.x, storedEdge.second.x);
+          float maxStored = std::max(storedEdge.first.x, storedEdge.second.x);
+
+          float minCurrent =
+              std::min(currentEdge.first.x, currentEdge.second.x);
+          float maxCurrent =
+              std::max(currentEdge.first.x, currentEdge.second.x);
+          if (minStored > maxCurrent || maxStored < minCurrent) {
+            return false;
+          }
+          switch (keypressed) {
+          case GLFW_KEY_W:
+          case GLFW_KEY_UP:
+            if (storedEdge.first.y >= currentEdge.first.y) {
+              return false;
+            }
+
+            if (currentEdge.first.x >= storedEdge.second.x &&
+                currentEdge.first.x <= storedEdge.first.x) {
+              return true;
+            }
+            if (storedEdge.first.x <= currentEdge.second.x &&
+                storedEdge.first.x >= currentEdge.first.x) {
+              return true;
+            }
+
+            break;
+          case GLFW_KEY_S:
+          case GLFW_KEY_DOWN:
+            if (storedEdge.first.y <= currentEdge.first.y) {
+              return false;
+            }
+
+            if (currentEdge.first.x <= storedEdge.second.x &&
+                currentEdge.first.x >= storedEdge.first.x) {
+              return true;
+            }
+            if (storedEdge.first.x >= currentEdge.second.x &&
+                storedEdge.first.x <= currentEdge.first.x) {
+              return true;
+            }
+            break;
+          }
+        }
+      }
     }
     return res;
   }
@@ -1588,9 +1654,13 @@ private:
         if (!couldMove()) {
           stepCount = 0;
           lastKeyPressed = -1;
+          if (block) {
+            summon();
+            block = false;
+          }
         } else {
           moveOnePixel();
-          if (stepCount == getStepCount()) {
+          if (!block && stepCount == getStepCount()) {
             stepCount = 0;
             lastKeyPressed = -1;
           }
