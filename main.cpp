@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <iostream>
 #include <limits>
 #include <set>
@@ -376,6 +377,30 @@ private:
     setSquareWidthHeigth(width, height);
   }
 
+  void resize() {
+    double ratio = (double)width / (double)height;
+    glm::mat4 scaleMatrix;
+    double val;
+    if (ratio > 1) {
+      val = ratio;
+      scaleMatrix = glm::scale(glm::mat4(), glm::vec3(1, val, 1));
+    } else {
+      val = 1 / ratio;
+      scaleMatrix = glm::scale(glm::mat4(), glm::vec3(val, 1, 1));
+    }
+    glm::vec2 centroid = getCentroid();
+    for (std::vector<Vertex>::iterator it = currentTetramino->vertices.begin();
+         it != currentTetramino->vertices.end(); ++it) {
+      Vertex &v = *it;
+      v.pos = v.pos - centroid;
+      glm::vec4 vector = glm::vec4(v.pos, 0.0f, 1.0f);
+      glm::vec4 transformedVector = scaleMatrix * vector;
+      v.pos = glm::vec2(transformedVector);
+      v.pos = v.pos + centroid;
+    }
+  }
+  void normalizePosition() {}
+
   void moveOnePixel() {
 
     glm::mat4 translationMatrix;
@@ -420,6 +445,7 @@ private:
       } else if (key == GLFW_KEY_SPACE) {
         rotateTetramino();
         setSquareWidthHeigth();
+        resize();
         moveVertex();
       } else if (key == GLFW_KEY_LEFT_CONTROL ||
                  key == GLFW_KEY_RIGHT_CONTROL) {
@@ -447,13 +473,39 @@ private:
 
   void storeTetramino() { blob.push_back(*currentTetramino); }
 
-  // todo сделать через честное нахождение центроида и rotation matrix
-  void rotateTetramino() {
+  glm::vec2 getCentroid() {
+    glm::vec2 centroid = glm::vec2(0.0f, 0.0f);
     for (std::vector<Vertex>::iterator it = currentTetramino->vertices.begin();
          it != currentTetramino->vertices.end(); ++it) {
       Vertex &v = *it;
+      centroid.x = centroid.x + v.pos.x;
+      centroid.y = centroid.y + v.pos.y;
+    }
+    centroid.x = centroid.x / currentTetramino->vertices.size();
+    centroid.y = centroid.y / currentTetramino->vertices.size();
+    return centroid;
+  }
+
+  // todo сделать через честное нахождение rotation matrix
+  void rotateTetramino() {
+    glm::vec2 centroid = getCentroid();
+    for (std::vector<Vertex>::iterator it = currentTetramino->vertices.begin();
+         it != currentTetramino->vertices.end(); ++it) {
+      Vertex &v = *it;
+      glm::mat4 translate = glm::translate(
+          glm::mat4(), glm::vec3(-centroid.x, -centroid.y, 0.0f));
+      glm::mat4 rotate =
+          glm::rotate(glm::mat4(), 90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
       glm::mat2 rotationMatrix = glm::mat2x2(0, 1, -1, 0);
+      glm::vec4 vector = glm::vec4(v.pos, 0.0f, 1.0f);
+      glm::vec4 transformedVector = translate * vector;
+      v.pos = glm::vec2(transformedVector);
       v.pos = rotationMatrix * v.pos;
+      translate =
+          glm::translate(glm::mat4(), glm::vec3(centroid.x, centroid.y, 0.0f));
+      vector = glm::vec4(v.pos, 0.0f, 1.0f);
+      transformedVector = translate * vector;
+      v.pos = glm::vec2(transformedVector);
     }
   }
 
