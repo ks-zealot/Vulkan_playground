@@ -376,7 +376,7 @@ private:
     glfwGetWindowSize(window, &width, &height);
     setSquareWidthHeigth(width, height);
   }
-
+//todo повыкидывать лишние функции
   void resize() {
     double ratio = (double)width / (double)height;
     glm::mat4 scaleMatrix;
@@ -399,7 +399,6 @@ private:
       v.pos = v.pos + centroid;
     }
   }
-  void normalizePosition() {}
 
   void moveOnePixel() {
 
