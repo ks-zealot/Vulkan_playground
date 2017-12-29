@@ -12,6 +12,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <set>
 #include <stdexcept>
 #include <vector>
@@ -66,10 +67,11 @@ struct Tetramino {
 };
 
 float size =
-    0.1f; // размер квадратика. так же используется для клонирования квадратика
+    0.3f; // размер квадратика. так же используется для клонирования квадратика
+float edge; // размер стороны квадратика после ресайза
 int sizeXInPixel;
 int sizeYInPixel;
-// todo переделать на алгоритме триангуляции
+// tod3 переделать на алгоритме триангуляции
 // todo переделать с учетом того что пространство неравномерно
 // todo убрать хардкод, сделать генерацию n polymino
 
@@ -163,15 +165,18 @@ Tetramino Z = {{
                2
 
 };
-std::vector<Tetramino> tetraminos = {T, L, S, Z, I, O, J};
+std::vector<Tetramino> tetraminos = {O}; // {T, L, S, Z, I, O, J};
 std::vector<Tetramino> blob = std::vector<Tetramino>();
 float onePixelX = 0.0f;
 float onePixelY = 0.0f;
 
-int step = 100;   // сколько мы должны пройти по нажатию, в пикселях
-double speed = 5; // скорость. измеряется в step в секунду. если два то
-                  // ускоряется в два раза. еслт 0.5 то замедляется
+int step = 100; // сколько мы должны пройти по нажатию, в пикселях
+double speed = 5.0;
+// скорость. измеряется в step в секунду. если два то
+// ускоряется в два раза. еслт 0.5 то замедляется
 
+// todo переделать на функции. тут довольно много кода который чтото делает с
+// вертексами в функции. напрашиваются лямбды
 glm::vec3 UP;
 glm::vec3 DOWN;
 glm::vec3 LEFT;
@@ -316,11 +321,14 @@ private:
 
   static void keyCallBack(GLFWwindow *w, int key, int scancode, int action,
                           int mods) {
+    HelloTriangleApplication *app =
+        reinterpret_cast<HelloTriangleApplication *>(
+            glfwGetWindowUserPointer(w));
+
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-      HelloTriangleApplication *app =
-          reinterpret_cast<HelloTriangleApplication *>(
-              glfwGetWindowUserPointer(w));
       app->handleKeyPress(key);
+    } else if (action == GLFW_RELEASE) {
+      app->releaseKey();
     }
   }
 
@@ -376,7 +384,7 @@ private:
     glfwGetWindowSize(window, &width, &height);
     setSquareWidthHeigth(width, height);
   }
-//todo повыкидывать лишние функции
+  // todo повыкидывать лишние функции
   void resize() {
     double ratio = (double)width / (double)height;
     glm::mat4 scaleMatrix;
@@ -398,6 +406,45 @@ private:
       v.pos = glm::vec2(transformedVector);
       v.pos = v.pos + centroid;
     }
+  }
+
+  void releaseKey() {
+    if (!block) {
+      lastKeyPressed = -1;
+    }
+  }
+
+  /*Функция, стирает нижний ряд в тетрамино
+   * как это работает - находим точки с максимальным y
+   * к y этих точек прибавляем сторону квадратика
+   * с максимальным потому что ось y инвертирована
+   * после этого все точки спускаем вниз на сторону квадратика
+   * сторону квадратика каждый раз высчитывается заново что наверное нездоров
+   */
+  void flat() {
+    float maxY = -1.0f;
+
+    for (std::vector<Vertex>::iterator it = currentTetramino->vertices.begin();
+         it != currentTetramino->vertices.end(); ++it) {
+      Vertex &v = *it;
+      maxY = std::max(maxY, v.pos.y);
+    }
+
+    for (std::vector<Vertex>::iterator it = currentTetramino->vertices.begin();
+         it != currentTetramino->vertices.end(); ++it) {
+
+      Vertex &v = *it;
+      if (v.pos.y == maxY) {
+        v.pos.y = v.pos.y - edge;
+      }
+    }
+    for (std::vector<Vertex>::iterator it = currentTetramino->vertices.begin();
+         it != currentTetramino->vertices.end(); ++it) {
+      Vertex &v = *it;
+      v.pos.y = v.pos.y + edge;
+    }
+    currentTetramino->sizeY--;
+    moveVertex();
   }
 
   void moveOnePixel() {
@@ -449,6 +496,8 @@ private:
       } else if (key == GLFW_KEY_LEFT_CONTROL ||
                  key == GLFW_KEY_RIGHT_CONTROL) {
         summonNextPentamino();
+      } else if (key == GLFW_KEY_F) {
+        flat();
       } else {
         lastKeyPressed = key;
         moveVertex();
@@ -463,6 +512,7 @@ private:
 
   void summon() {
     storeTetramino();
+    removeBlocks();
     initTetramino();
     setTetramino();
     setSquareWidthHeigth();
@@ -533,7 +583,7 @@ private:
         v.pos = v.pos * glm::vec2(val, 1);
       } else {
         val = ratio;
-        v.pos = glm::vec2(1, val);
+        v.pos = v.pos * glm::vec2(1, val);
       }
     }
     for (std::vector<Vertex>::iterator it = currentTetramino->vertices.begin();
@@ -546,6 +596,7 @@ private:
     }
     sizeXInPixel = ((maxX - minX) / currentTetramino->sizeX) / onePixelX;
     sizeYInPixel = ((maxY - minY) / currentTetramino->sizeY) / onePixelY;
+    edge = (maxY - minY) / (float)currentTetramino->sizeY;
   }
 
   void initVulkan() {
@@ -1500,7 +1551,7 @@ private:
             }
 
             break;
-          case GLFW_KEY_L:
+          case GLFW_KEY_A:
           case GLFW_KEY_LEFT:
             if (storedEdge.first.x >= currentEdge.first.x) {
               return false;
@@ -1572,6 +1623,24 @@ private:
     return res;
   }
 
+  std::vector<std::pair<glm::vec2, glm::vec2>> getEdges(Tetramino *t) {
+    std::vector<std::pair<glm::vec2, glm::vec2>> currentEdges =
+        std::vector<std::pair<glm::vec2, glm::vec2>>();
+
+    for (int idx = 0; idx < t->vertices.size() - 1;) {
+      Vertex v1 = t->vertices.at(idx);
+      idx++;
+      Vertex v2 = t->vertices.at(idx);
+      currentEdges.push_back(std::make_pair(v1.pos, v2.pos));
+    }
+    currentEdges.push_back(std::make_pair(
+        currentTetramino->vertices.at(currentTetramino->vertices.size() - 1)
+            .pos,
+        currentTetramino->vertices.at(0).pos));
+
+    return currentEdges;
+  }
+
   bool couldMoveThroughBlocks(Coord coord, int key) {
     if (blob.empty()) {
       return true;
@@ -1579,38 +1648,16 @@ private:
     std::vector<std::pair<glm::vec2, glm::vec2>> edges =
         std::vector<std::pair<glm::vec2, glm::vec2>>();
     std::vector<std::pair<glm::vec2, glm::vec2>> currentEdges =
-        std::vector<std::pair<glm::vec2, glm::vec2>>();
+        getEdges(currentTetramino);
 
-    for (int idx = 0; idx < currentTetramino->vertices.size() - 1;) {
-      Vertex v1 = currentTetramino->vertices.at(idx);
-      idx++;
-      Vertex v2 = currentTetramino->vertices.at(idx);
-      currentEdges.push_back(std::make_pair(v1.pos, v2.pos));
-    }
-    currentEdges.push_back(std::make_pair(
-        currentTetramino->vertices.at(currentTetramino->vertices.size() - 1)
-            .pos,
-        currentTetramino->vertices.at(0).pos));
     for (std::vector<Tetramino>::iterator i = blob.begin(); i != blob.end();
          i++) {
-      Tetramino &t = *i;
-
-      for (int idx = 0; idx < t.vertices.size() - 1;) {
-
-        Vertex v1 = t.vertices.at(idx);
-        idx++;
-        Vertex v2 = t.vertices.at(idx);
-        edges.push_back(std::make_pair(v1.pos, v2.pos));
-      }
-
-      edges.push_back(std::make_pair(t.vertices.at(t.vertices.size() - 1).pos,
-                                     t.vertices.at(0).pos));
+      std::vector<std::pair<glm::vec2, glm::vec2>> e = getEdges(&(*i));
     }
 
     for (std::vector<std::pair<glm::vec2, glm::vec2>>::iterator e =
              currentEdges.begin();
          e != currentEdges.end(); e++) {
-
       for (std::vector<std::pair<glm::vec2, glm::vec2>>::iterator ee =
                edges.begin();
            ee != edges.end(); ee++) {
@@ -1684,14 +1731,140 @@ private:
     case GLFW_KEY_W:
     case GLFW_KEY_DOWN:
     case GLFW_KEY_S:
-      return sizeXInPixel;
+      return 1; // sizeXInPixel;
     case GLFW_KEY_LEFT:
     case GLFW_KEY_A:
     case GLFW_KEY_RIGHT:
     case GLFW_KEY_D:
-      return sizeYInPixel + 1; // because reasons
+      return 1; // sizeYInPixel + 1; // because reasons
     default:
       return 0;
+    }
+  }
+  //поскольку y не равны друг другу, а лежат в некой деьла окружности,
+  //мы их кластеризуем. для этого мы вернем примерные центры кластеров, первый
+  //из которых
+  // 1.0f и до -1.0f с шагом в сторону квадратика
+  std::vector<float> calculateCentroids() {
+    float step = 1.0f;
+    std::vector<float> res = std::vector<float>();
+    while (step > -1.0f) {
+      res.push_back(step);
+
+      step = step - edge;
+    }
+    return res;
+  }
+
+  std::vector<float> calculateAxis(std::vector<float> *centroids,
+                                   std::vector<float> *points, float distance) {
+    std::vector<float> res = std::vector<float>();
+    for (std::vector<float>::iterator centroid = centroids->begin();
+         centroid != centroids->end(); centroid++) {
+      float &c = *centroid;
+      std::vector<float> *cluster = new std::vector<float>();
+      for (std::vector<float>::iterator point = points->begin();
+           point != points->end(); point++) {
+        float &p = *point;
+        if (std::find(cluster->begin(), cluster->end(), p) == cluster->end() &&
+            std::abs(p - c) <= distance) {
+          cluster->push_back(p);
+        }
+      }
+      if (cluster->empty()) {
+        continue;
+      }
+      res.push_back(*std::max_element(cluster->begin(), cluster->end()));
+    }
+    return res;
+  }
+
+  bool checkAxis(float axis) {
+    float length = 0.0f;
+    std::vector<std::pair<glm::vec2, glm::vec2>> edges;
+    for (std::vector<Tetramino>::iterator t = blob.begin(); t != blob.end();
+         t++) {
+      Tetramino &tetramino = *t;
+      bool tmblr = false;
+      glm::vec2 p;
+      std::pair<float, float> points;
+      for (std::vector<Vertex>::iterator v = tetramino.vertices.begin();
+           v != tetramino.vertices.end(); v++) {
+        if (std::abs(v->pos.y - axis) <= edge / 2) {
+          if (tmblr) {
+            points = std::make_pair(p.x, v->pos.x);
+          }
+          p = v->pos;
+          tmblr = true;
+        }
+      }
+
+      length = length + (std::max(points.first, points.second) -
+                         std::min(points.first, points.second));
+
+      std::vector<std::pair<glm::vec2, glm::vec2>> e = getEdges(&(*t));
+      edges.insert(edges.end(), e.begin(), e.end());
+    }
+    bool tmblr = false;
+    glm::vec2 p;
+    std::pair<float, float> points;
+    float edgeSize = edge;
+    for (std::vector<std::pair<glm::vec2, glm::vec2>>::iterator i =
+             edges.begin();
+         i != edges.end(); i++) {
+      std::pair<glm::vec2, glm::vec2> &edge = *i;
+      if (edge.first.x == edge.second.x) {
+        float min = std::min(edge.first.y, edge.second.y);
+        float max = std::max(edge.first.y, edge.second.y);
+        if (std::abs(axis - min) < (edgeSize / 2.0f) ||
+            std::abs(axis - max) < (edgeSize / 2.0f)) {
+          continue;
+        }
+        if (axis > min && axis < max) {
+          if (tmblr) {
+            points = std::make_pair(p.x, edge.first.x);
+            tmblr = !tmblr;
+            length = length + (std::max(points.first, points.second) -
+                               std::min(points.first, points.second));
+          }
+          p = edge.first;
+          tmblr = !tmblr;
+        }
+      }
+    }
+    std::cout << "for axis " << axis << " length " << length << std::endl;
+    return 2.0f - length < edge;
+  }
+
+  void cutAxis(float axis) { std::cout << "cut axis " << axis << std::endl; }
+  /**
+   * Итерируемся по всем тетрамино.
+   * Собираем все тетрамино по принципу их Y в дельта окружности друг от друга
+   * берем один случайный Yt
+   * случайный потому что они более менее равны
+   * на ходим максимальный Xmax у точек Y котох больше
+   * если у точки с Y меньше Yt X > Xmax то уравниваем c Xmax
+   * Y увеличиваем на edge
+   * тетрамино после всех преобарзований двигаем вниз пока оно не упрется
+   */
+  void removeBlocks() {
+    std::vector<float> centroids = calculateCentroids();
+    std::vector<float> points = std::vector<float>();
+    for (std::vector<Tetramino>::iterator t = blob.begin(); t != blob.end();
+         t++) {
+      Tetramino &tetramino = *t;
+      for (std::vector<Vertex>::iterator v = tetramino.vertices.begin();
+           v != tetramino.vertices.end(); v++) {
+        Vertex &vertex = *v;
+
+        points.push_back(vertex.pos.y);
+      }
+    }
+    for (std::vector<float>::iterator y = centroids.begin();
+         y != centroids.end(); y++) {
+      if (checkAxis(*y)) {
+        cutAxis(*y);
+      }
     }
   }
 
@@ -1713,7 +1886,6 @@ private:
           moveOnePixel();
           if (!block && stepCount == getStepCount()) {
             stepCount = 0;
-            lastKeyPressed = -1;
           }
         }
       }
